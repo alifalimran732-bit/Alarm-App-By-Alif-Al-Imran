@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alif Alarm</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0b1020;--card:#121a2f;--card2:#18223c;--text:#f5f7ff;--muted:#9da9c5;--accent:#6c7cff;--danger:#ff5d73;--border:#293554}
+body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top,#1c2850 0,#0b1020 45%,#070b15 100%);color:var(--text);display:flex;justify-content:center;padding:24px}
+.app{width:min(900px,100%)}
+header{text-align:center;margin:10px 0 22px}
+.logo{font-size:42px;font-weight:800;letter-spacing:-2px}
+.logo span{color:#7d8cff}
+.sub{color:var(--muted);margin-top:5px}
+.clock{background:rgba(18,26,47,.88);border:1px solid var(--border);border-radius:24px;padding:25px;text-align:center;box-shadow:0 18px 50px #0005}
+.time{font-size:clamp(48px,10vw,88px);font-weight:800;letter-spacing:2px}
+.date{color:var(--muted);font-size:17px;margin-top:5px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.card{background:rgba(18,26,47,.92);border:1px solid var(--border);border-radius:20px;padding:20px}
+.card h2{margin:0 0 16px;font-size:20px}
+label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}
+input,select{width:100%;padding:12px;border-radius:11px;border:1px solid var(--border);background:#0c1325;color:var(--text);font-size:16px;outline:none}
+.row{display:flex;gap:10px}
+button{border:0;border-radius:11px;padding:12px 15px;font-weight:700;cursor:pointer;background:var(--accent);color:white}
+button:hover{filter:brightness(1.1)}
+.secondary{background:var(--card2)}
+.danger{background:var(--danger)}
+.alarm{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;margin-top:10px;background:#0d1529;border:1px solid var(--border);border-radius:14px}
+.alarm-main{min-width:0}.alarm-time{font-size:25px;font-weight:800}.alarm-name{color:var(--muted);font-size:13px;margin-top:3px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.empty{color:var(--muted);text-align:center;padding:20px}
+.switch{position:relative;width:48px;height:27px;display:inline-block;flex:none}
+.switch input{display:none}.slider{position:absolute;inset:0;background:#37425d;border-radius:30px;cursor:pointer}.slider:before{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}.switch input:checked+.slider{background:var(--accent)}.switch input:checked+.slider:before{transform:translateX(21px)}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;padding:20px;z-index:10}.modal.show{display:flex}.modal-box{width:min(430px,100%);background:#121a2f;border:1px solid var(--border);border-radius:24px;padding:25px;text-align:center;box-shadow:0 25px 80px #0009}.ring{font-size:55px;margin-bottom:10px}.modal-box h2{margin:0}.modal-box p{color:var(--muted)}
+footer{text-align:center;color:#697594;font-size:12px;margin:20px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.alarm{align-items:flex-start}.actions{max-width:145px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo">Alif <span>Alarm</span></div>
+  <div class="sub">Simple • Beautiful • Browser Alarm</div>
+</header>
+
+<section class="clock">
+  <div id="clock" class="time">00:00:00</div>
+  <div id="date" class="date">Loading...</div>
+</section>
+
+<div class="grid">
+<section class="card">
+  <h2>➕ Add Alarm</h2>
+  <label for="alarmTime">Alarm time</label>
+  <input id="alarmTime" type="time">
+  <label for="alarmName">Alarm name</label>
+  <input id="alarmName" type="text" placeholder="e.g. Wake up">
+  <label for="repeat">Repeat</label>
+  <select id="repeat">
+    <option value="once">Once</option>
+    <option value="daily">Every day</option>
+  </select>
+  <label for="sound">Alarm sound</label>
+  <select id="sound">
+    <option value="beep">Classic Beep</option>
+    <option value="soft">Soft Beep</option>
+  </select>
+  <div class="row" style="margin-top:16px">
+    <button id="addBtn" style="flex:1">Add Alarm</button>
+    <button id="testBtn" class="secondary">🔊 Test</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>⏰ My Alarms</h2>
+  <div id="alarmList"></div>
+</section>
+</div>
+
+<footer>Alif Alarm • Keep this browser tab open for reliable alarms.</footer>
+</div>
+
+<div id="ringModal" class="modal">
+  <div class="modal-box">
+    <div class="ring">⏰</div>
+    <h2 id="ringTitle">Alarm!</h2>
+    <p id="ringText">Your alarm is ringing.</p>
+    <div class="row" style="justify-content:center;margin-top:18px">
+      <button id="snoozeBtn" class="secondary">💤 Snooze 5 min</button>
+      <button id="stopBtn" class="danger">⏹ Stop</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "alifAlarmDataV1";
+let alarms = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+let ringingId = null, audioCtx = null, ringTimer = null;
+
+const $ = id => document.getElementById(id);
+
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(alarms)); }
+
+function pad(n){return String(n).padStart(2,"0")}
+
+function updateClock(){
+  const d=new Date();
+  $("clock").textContent=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  $("date").textContent=d.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  checkAlarms(d);
+}
+setInterval(updateClock,1000); updateClock();
+
+function playAlarm(sound="beep"){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==="suspended") audioCtx.resume();
+    const start=audioCtx.currentTime;
+    const notes=sound==="soft" ? [660,880] : [880,660,880];
+    notes.forEach((freq,i)=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.type="sine"; o.frequency.value=freq;
+      g.gain.setValueAtTime(0.0001,start+i*.25);
+      g.gain.exponentialRampToValueAtTime(.25,start+i*.25+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,start+i*.25+.20);
+      o.connect(g);g.connect(audioCtx.destination);
+      o.start(start+i*.25);o.stop(start+i*.25+.22);
+    });
+  }catch(e){}
+}
+
+function checkAlarms(d){
+  const hm=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  alarms.forEach(a=>{
+    if(!a.enabled || a.lastTriggered===d.toDateString()) return;
+    if(a.time===hm && d.getSeconds()<2){
+      a.lastTriggered=d.toDateString();
+      save();
+      triggerAlarm(a);
+      if(a.repeat==="once") a.enabled=false;
+    }
+  });
+  render();
+}
+
+function triggerAlarm(a){
+  ringingId=a.id;
+  $("ringTitle").textContent=a.name || "Alif Alarm";
+  $("ringText").textContent=`Alarm time: ${a.time}`;
+  $("ringModal").classList.add("show");
+  playAlarm(a.sound);
+  clearInterval(ringTimer);
+  ringTimer=setInterval(()=>playAlarm(a.sound),3000);
+}
+
+function stopRinging(){
+  clearInterval(ringTimer); ringTimer=null; ringingId=null;
+  $("ringModal").classList.remove("show");
+}
+
+function render(){
+  const box=$("alarmList");
+  if(!alarms.length){box.innerHTML='<div class="empty">No alarms yet.<br>Add your first alarm!</div>';return}
+  box.innerHTML=alarms.map(a=>`
+    <div class="alarm">
+      <div class="alarm-main">
+        <div class="alarm-time">${a.time}</div>
+        <div class="alarm-name">${escapeHtml(a.name||"Alarm")} • ${a.repeat==="daily"?"Every day":"Once"}</div>
+      </div>
+      <div class="actions">
+        <label class="switch" title="${a.enabled?"Disable":"Enable"}">
+          <input type="checkbox" ${a.enabled?"checked":""} onchange="toggleAlarm('${a.id}')">
+          <span class="slider"></span>
+        </label>
+        <button class="danger" onclick="deleteAlarm('${a.id}')">Delete</button>
+      </div>
+    </div>`).join("");
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+
+function toggleAlarm(id){
+  const a=alarms.find(x=>x.id===id); if(a){a.enabled=!a.enabled;a.lastTriggered=null;save();render();}
+}
+function deleteAlarm(id){
+  alarms=alarms.filter(a=>a.id!==id);save();render();
+}
+
+$("addBtn").onclick=()=>{
+  const time=$("alarmTime").value;
+  if(!time){alert("Please choose an alarm time.");return}
+  alarms.push({
+    id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),
+    time,
+    name:$("alarmName").value.trim()||"Alarm",
+    repeat:$("repeat").value,
+    sound:$("sound").value,
+    enabled:true,
+    lastTriggered:null
+  });
+  save();render();
+  $("alarmName").value="";
+  alert("Alarm added successfully!");
+};
+
+$("testBtn").onclick=()=>playAlarm($("sound").value);
+$("stopBtn").onclick=stopRinging;
+
+$("snoozeBtn").onclick=()=>{
+  const a=alarms.find(x=>x.id===ringingId);
+  stopRinging();
+  if(!a)return;
+  const d=new Date(Date.now()+5*60000);
+  const time=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  alarms.push({...a,id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),time,repeat:"once",enabled:true,lastTriggered:null,name:a.name+" (Snooze)"});
+  save();render();
+};
+
+render();
+</script>
+</body>
+</html>
